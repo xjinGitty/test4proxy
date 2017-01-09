@@ -1,0 +1,475 @@
+#!/bin/bash 
+#[ -e sourcefile ]&&. sourcefile
+api=api.ocsv42.c9qa.oraclecorp.com
+user=/root/root
+passwd=/tmp/pwd-nbl
+
+Help(){
+cat <<EOF
+MAN
+    This is a tool for using nimbula tools.
+
+    <orchestration section>     <instance section>          <site level section>            <network section>
+    --add                       --get-instance              --list-node                     --list-network
+    --update                    --list-instance             --get-node                      --get-network
+    --start                     --delete-instance           --list-config                   --get-ipexchange
+    --get                       --reboot-instance           --list-account                  --del-ipexchange
+    --stop                                                  --add-account                   --cre-ipexchange
+    --delete                                                --list-shape-json               --add-ipexchange
+    --get-error                                             --list-shape                    --del-network
+    --list-orchs                                            --list-image                    --cre-network|--create-network
+    --list-orchs-all                                        --cookie
+
+
+
+    <ipReservation and ipPool section>              <seclist section>                       <availability domain section>
+    --add-ipr                                       --cre-seclist|--create-seclist          --add-ad
+    --delete-ipr                                    --get-seclist|--create-seclist          --get-ad
+    --list-ipr                                      --list-seclist                          --list-ad
+    --list-ipa                                      --update-seclist                        --disable-ad
+    --list-ippool                                                                           --del-ad|--delete-ad
+    --get-ipr                                                                               --no
+                                                                                            --vars
+
+
+    <scale-up used section>
+    --nts
+    --audit
+    --add-cluster
+    --place-services
+    --fix-seclist
+    --update-seciplist
+    --list-service
+    --list-resource
+    --list-noderesource
+    --get-cluster
+    --get-log
+    --list-bstoragemanager
+    --ls-bic
+    --exec
+EOF
+}
+
+while [ $# -gt 0 ];do
+case $1 in
+# section for orchs
+        --add) shift
+        orc=$1
+        nimbula-api add orchestration $orc -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --update) shift
+        orc=$1
+        nimbula-api update orchestration $orc -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --start) shift
+        orc=$1
+        nimbula-api start orchestration $orc -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --get) shift
+        orc=$1
+        nimbula-api get orchestration $orc -a $api -u $user -p $passwd -f json
+        shift
+        ;;
+
+        --stop) shift
+        orc=$1
+        nimbula-api stop orchestration $orc -a $api -u $user -p $passwd --force
+        shift
+        ;;
+
+        --delete) shift
+        orc=$1
+        nimbula-api delete orchestration $orc -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --get-error) shift
+        orc=$1
+        nimbula-api get orchestration $orc -a $api -u $user -p $passwd -f json |jq .list[0].oplans[0].info.errors
+        shift
+        ;;
+
+        --list-orchs) shift
+        nimbula-api list orchestration $user  -F name,status,oplans["label"] -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --list-orchs-all) shift
+        nimbula-api list orchestration /  -F name,status,label -a $api -u $user -p $passwd
+        shift
+        ;;
+
+# section for instance
+        --get-instance) shift
+        nimbula-api list instance $1 -a $api -u $user -p $passwd -f json
+        shift
+        ;;
+
+        --list-instance) shift
+        nimbula-api list instance / -a $api -u $user -p $passwd -F name,ip,state,vcable_id
+        shift
+        ;;
+
+        --delete-instance) shift
+        nimbula-api delete instance $1 -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --reboot-instance) shift
+        nimbula-api add rebootinstancerequest $1 -a $api -u $user -p $passwd
+        shift
+        ;;
+
+# section for node
+        --list-node) shift
+        nimbula-admin list node / -f tab -F endpoint,status,ipmi_ip,mac,cluster,availability_domain,instances -a $api -u /root/root -p $passwd $@
+        exit
+        ;;
+
+        --get-node) shift
+        nimbula-admin get node $@ -a $api -u /root/root -p $passwd
+        exit
+        ;;
+
+        --list-config) shift
+        nimbula-admin -a $api -u /root/root -p $passwd list configpoint / -f json| grep -B 2 -A 4 admin_cluster 
+        exit
+        ;;
+    
+# section for account
+        --list-account) shift
+        nimbula-api list account / -a $api -u $user -p $passwd -f json
+        shift
+        ;;
+
+        --add-account) shift
+        nimbula-api add account $1 -a $api -u $user -p $passwd -f json
+        shift
+        ;;
+
+# section for shape and image
+        --list-shape-json) shift
+        nimbula-api list shape / -a $api -u $user -p $passwd -f json
+        shift
+        ;;
+
+        --list-shape) shift
+        nimbula-api list shape / -a $api -u $user -p $passwd
+        shift
+        ;;
+
+        --list-image) shift
+        nimbula-api list imagelist / -a $api -u $user -p $passwd
+        shift
+        ;;
+        
+# section for network 
+        --cookie) shift
+        curl -X POST -d '{"user":"/root/root","password":"OracleCloud9"}' $api/authenticate/ -H "Content-Type: application/nimbula-v3+json" -k -v -c cookie.txt
+        shift
+        ;;
+
+    --list-dns) shift
+        nimbula-api list dnskey $user -a $api -u $user -p $passwd -f json
+        shift
+        ;;
+
+        --list-network)shift
+        curl -H 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetwork   -X GET  -H 'X-Oracle-Compute-Call-ID: list-ipnetworks' -i -b cookie.txt >/tmp/network 2>/dev/null
+        cat /tmp/network |grep name|jq -r .result[].name || cat /tmp/network
+        exit
+        ;;
+
+        --get-network) shift
+        Name=$1
+        [ x$2 == x ]||Tag="$2"
+        curl -H 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetwork$Name   -X GET  -H 'X-Oracle-Compute-Call-ID: list-ipnetworks' -i -b cookie.txt >/tmp/network 2>/dev/null
+        cat /tmp/network |grep name|jq -r .$Tag || cat /tmp/network
+        exit
+        ;;
+
+        --get-ipexchange) shift
+        Name=$1
+        [ x$2 == x ]||Tag="$2"
+        #curl -H 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipNetworkExchanges$Name   -X GET  -H 'X-Oracle-Compute-Call-ID: list-ipexchange' -i -b cookie.txt 2>/dev/null |grep name |jq .$Tag
+        curl -H 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetworkexchange$Name   -X GET  -H 'X-Oracle-Compute-Call-ID: list-ipexchange' -i -b cookie.txt 2>/dev/null |grep name |jq .$Tag
+        exit
+        ;;
+
+        --del-ipexchange) shift
+        Name=$1
+        curl -H 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetworkexchange$Name   -X DELETE  -H 'X-Oracle-Compute-Call-ID: list-ipexchange' -b cookie.txt 
+        exit
+        ;;
+
+        --cre-ipexchange) shift
+        Name=$1
+        curl -vH 'Accept: application/json'  -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetworkexchange/ -X POST  -H 'X-Oracle-Compute-Call-ID: create-ipexchange1' -b cookie.txt -d "{\"name\": \"$Name\"}"
+        exit
+        ;;
+
+        --add-ipexchange) shift
+        Name=$1
+        shift
+        EName=$1
+        shift
+        ipPrefix=$1
+        echo "Add $Name to $EName , $ipPrefix"
+        curl -vH 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetwork$Name -X PUT -H 'X-Oracle-Compute-Call-ID: update-ipnet2' -b cookie.txt   -d "{\"name\": \"$Name\",\"ipAddressPrefix\": \"$ipPrefix\",\"ipNetworkExchange\": \"$EName\"}"
+        exit
+        ;;
+
+        --del-network) shift
+        ipnetwork=$1
+        curl -H 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetwork$ipnetwork   -X DELETE  -H 'X-Oracle-Compute-Call-ID: delete-ipnetwork'  -b cookie.txt
+        exit
+        ;;
+
+        --cre-network|--create-network) shift
+        ipnetwork=$1
+        shift
+        ipprefix=$1
+    curl -vH 'Accept: application/json' -H 'Content-Type: application/json; charset=utf-8' $api/network/v1/ipnetwork/ -X POST -H 'X-Oracle-Compute-Call-ID: create-ipnet1' -b cookie.txt  -d "{\"name\": \"$ipnetwork\",\"ipAddressPrefix\": \"$ipprefix\" }"
+        exit
+        ;;
+
+        --add-ipr) shift
+    pool=$1; shift
+    name=$1; shift
+        nimbula-api -a $api -u $user -p $passwd add ipreservation $pool --name $name --permanent True
+        exit
+        ;;
+
+        --delete-ipr) shift
+        nimbula-api -a $api -u $user -p $passwd delete ipreservation $@ 
+        exit
+        ;;
+
+        --list-ipr) shift
+        nimbula-api -a $api -u $user -p $passwd list ipreservation / $@
+        exit
+        ;;
+
+        --list-ipa) shift
+        nimbula-api -a $api -u $user -p $passwd list ipassociation / $@
+        exit
+        ;;
+
+        --list-ippool) shift
+        nimbula-api -a $api -u $user -p $passwd list ippool /
+        exit
+        ;;
+        --get-ipr) shift
+        nimbula-api -a $api -u $user -p $passwd get ipreservation $1 -f json
+        exit
+        ;;
+
+# section for seclist
+        --cre-seclist|--create-seclist) shift
+        Name=$1
+        shift
+        policy=$1
+        shift
+        out_policy=$1
+        nimbula-api -a $api -u $user -p $passwd add seclist $Name --policy $policy --outbound_cidr_policy $out_policy --description $Name
+        exit
+        ;;
+
+        --get-seclist|--create-seclist) shift
+        Name=$1
+        shift
+        policy=$1
+        shift
+        out_policy=$1
+        nimbula-api -a $api -u $user -p $passwd get seclist $Name --policy $policy --outbound_cidr_policy $out_policy --description $Name
+        exit
+        ;;
+
+        --list-seclist) shift
+        nimbula-api -a $api -u $user -p $passwd list seclist / $@
+        exit
+        ;;
+
+        --update-seclist) shift
+        Name=$1
+        shift
+        policy=$1
+        shift
+        out_policy=$1
+        nimbula-api -a $api -u $user -p $passwd update seclist $Name --policy $policy --outbound_cidr_policy $out_policy --description $Name
+        exit
+        ;;
+
+
+# section for AD
+        --add-ad) shift
+        nimbula-admin -a $api -u $user -p $passwd add availabilitydomain $1 -d --active=True
+        shift
+        exit
+        ;;
+        --get-ad) shift
+        nimbula-api get availabilitydomain $@ -d -a $api -u $user -p $passwd
+        shift
+        exit
+        ;;
+        --list-ad) shift
+        nimbula-api list availabilitydomain / $@ -d -a $api -u $user -p $passwd
+        shift
+        exit
+        ;;
+        --disable-ad) shift
+        nimbula-admin update availabilitydomain $1 --active=False -d -a $api -u $user -p $passwd
+        shift
+        exit
+        ;;
+
+        --del-ad|--delete-ad) shift
+        nimbula-admin delete availabilitydomain $1 -d -a $api -u $user -p $passwd
+        shift
+        exit
+        ;;
+
+        --no) shift
+        nimbula-api -a $api -u $user -p $passwd $@
+        exit
+        ;;
+
+        --vars)
+        cat /bin/ynim |grep  '\-\-' |grep shift |awk -F\) '{print $1}'
+        exit
+        ;;
+
+# section for scale-up project 
+        --nts) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd admin nts
+        exit
+        ;;
+
+        --audit) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd audit-site
+        exit
+        ;;
+
+        --add-cluster) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd cluster add $1
+        shift
+        exit
+        ;;
+
+        --place-services) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd admin place-services
+        exit
+        ;;
+
+        --fix-seclist) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd cluster fix-seclist
+        exit
+        ;;
+
+        --update-seciplist) shift
+	nimbula-api -a $api -u $user -p $passwd update seciplist /oracle/public/instance "$1"
+        exit
+        ;;
+
+        --list-service) shift
+	nimbula-admin -a $api -u $user -p $passwd list service / -F uri,name 
+        exit
+        ;;
+
+        --list-specific-service) shift
+        service=$1
+        oc-service -a $api -u $user -p $passwd -n $passwd list $service 
+        exit
+        ;;
+
+        --start-specific-service) shift
+        service=$1
+        shift
+        node=$1
+        shift
+        oc-service -a $api -u $user -p $passwd -n $passwd start $service $node 
+        exit
+        ;;
+
+        --stop-specific-service) shift
+        service=$1
+        shift
+        node=$1
+        shift
+        oc-service -a $api -u $user -p $passwd -n $passwd stop $service $node 
+        exit
+        ;;
+
+        --list-resource) shift
+        nimbula-admin list clusterresourceinfo / $@ -a $api -u $user -p $passwd
+        shift
+        exit
+        ;;
+
+        --list-noderesource) shift
+        nimbula-admin -a $api -u $user -p $passwd list noderesourceinfo / -f tab -F endpoint,node_resources,instances | awk '{printf "%15s %15s %2d %4s %4d %4s %4d %4s %4d \n", $1," Instance_number: ",NF-43," ram: ",$10/1024," cpu: ",$12," disk: ",$4/1024/1024/1024}' | sed "1,1d;s/,//g" | sort -k1 -n
+        shift
+        exit
+        ;;
+
+        --get-cluster) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd list-nodes ${1}_cluster
+        exit
+        ;;
+
+        --get-log) shift
+        message=$1
+        shift
+        log='log'
+        [ x$1 == x ]||log=$1
+        echo "cat /var/log/messages |grep $message"
+        nimbula-exec -a $api -u /root/root -p $passwd --nodeuser=nimbulaadmin --nodepass=$passwd -c  "cat /var/log/messages |grep $message" |tee $log
+        ;;
+
+
+        --ls-bic) shift
+        nimbula-exec -a $api -u /root/root -p $passwd --nodeuser=nimbulaadmin --nodepass=$passwd -c "ls /etc/nimbula/bic" 
+        exit
+        ;;
+
+        --exec) shift
+	node=$1
+	shift
+	cmd=$1
+        nimbula-exec -a $api -u /root/root -p $passwd --nodeuser=nimbulaadmin --nodepass=$passwd -n $node -c "$cmd"
+        shift
+        exit
+        ;;
+
+        --audit-higgs) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd higgs audit
+        shift
+        ;;
+
+        --higgs-version) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd higgs version 
+        shift
+        ;;
+
+        --site-version) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd nimbula version 
+        shift
+        ;;
+
+        --repost) shift
+        oc-service -a $api -u $user -p $passwd -n $passwd admin monitor-site
+        shift
+        ;;
+
+        *) shift
+        Help
+        exit
+        ;;
+esac
+done
